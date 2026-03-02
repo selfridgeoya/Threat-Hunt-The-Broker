@@ -1,7 +1,7 @@
-#Threat Hunt Report
-#Multi-Host Credential-Focused Intrusion – Ashford Sterling Recruitment
+# Threat Hunt Report
+# Multi-Host Credential-Focused Intrusion – Ashford Sterling Recruitment
 
-##Platforms and Languages Leveraged
+## Platforms and Languages Leveraged
 
 Windows 10 Endpoint (AS-PC1)
 
@@ -11,17 +11,20 @@ Microsoft Sentinel (Log Analytics)
 
 Kusto Query Language (KQL)
 
-##Scenario
+## Scenario
 
-A high-severity alert was generated in Microsoft Defender for Endpoint titled:
+A high-severity alert was generated in Microsoft Defender for Endpoint titled: “Compromised account conducting hands-on-keyboard attack” The alert indicated that an account on device AS-PC1 was executing interactive commands consistent with manual attacker activity.
 
-“Compromised account conducting hands-on-keyboard attack”
-
-The alert indicated that an account on device AS-PC1 was executing interactive commands consistent with manual attacker activity.
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/817e811e-668b-4c2a-9995-085fd0b4eb78" />
 
 
-##🧩 SECTION 1: INITIAL ACCESS 
-Objective
+
+## 🧩 SECTION 1: INITIAL ACCESS 
+
+The attacker needed a way in. Something landed on an endpoint - whether it was clicked, downloaded, or delivered - and kicked off the entire compromise. Trace the infection back to its origin. Identify what arrived, how it executed, and what it spawned.
+
+
+### Objective
 
 Trace the infection back to its origin. Identify:
 
@@ -34,7 +37,10 @@ What it spawned
 The goal is to reconstruct the beginning of the attack chain using telemetry.
 
 
-###🚩 Initial Vector
+### 🚩 Initial Vector
+
+Identify the file that started the infection chain.
+
 
 Investigation
 
@@ -51,22 +57,21 @@ DeviceProcessEvents
 
 <img width="2302" height="934" alt="image" src="https://github.com/user-attachments/assets/a45e50f1-02af-4719-bfb8-29b4fd8f6469" />
 
-📸 Insert screenshot showing .pdf.exe
 
 Finding
 
-Filename:
-
-Daniel_Richardson_CV.pdf.exe
+Filename: nDaniel_Richardson_CV.pdf.exe
 
 The double extension strongly indicates phishing masquerading as a resume document.
 
-###🚩 Payload Hash
+### 🚩 Payload Hash
+
+Identify the SHA256 hash of the initial payload.
 
 To uniquely identify the executable, I extracted its SHA256 value from telemetry.
 
 Query Used 
-I set up time range for 2026-01-15
+I set up time range for 2026-01-15 
 
 DeviceProcessEvents
 | where DeviceName contains "AS-PC1"
@@ -76,13 +81,10 @@ DeviceProcessEvents
 
 <img width="468" height="179" alt="image" src="https://github.com/user-attachments/assets/438055a7-81c4-4a02-9406-c01e74c0ab65" />
 
-📸 Insert screenshot showing SHA256
 
 Finding
 
-SHA256:
-
-48b97fd91946e81e3e7742b3554585360551551cbf9398e1f34f4bc4eac3a6b5
+SHA256: 48b97fd91946e81e3e7742b3554585360551551cbf9398e1f34f4bc4eac3a6b5
 
 ### 🚩 User Interaction
 
@@ -94,23 +96,16 @@ DeviceProcessEvents
 | project Timestamp, FileName, InitiatingProcessFileName
 
 <img width="1454" height="816" alt="image" src="https://github.com/user-attachments/assets/30b2010c-3b1c-4ea0-a171-97eee13b90ec" />
-📸 Insert screenshot showing parent process
 
 Finding
 
-Parent Process:
+Parent Process: explorer.exe
 
-explorer.exe
+Execution via explorer.exe confirms: User double-click execution, Manual interaction we can conclude iPhishing-based initial access.
 
-Execution via explorer.exe confirms:
+### 🚩 Suspicious Child Process
 
-User double-click execution
-
-Manual interaction
-
-Phishing-based initial access
-
-###🚩 Suspicious Child Process
+The payload created a child process for further activity.
 
 After execution, the malicious file spawned a legitimate Windows process. Daniel_Richardson_CV.pdf.exe as the suspected initial payload, my next goal was to understand what it spawned and how it was launched. In Microsoft Defender, child processes created by a payload are recorded as separate events, where:
 
@@ -127,18 +122,15 @@ DeviceProcessEvents
 
 <img width="2220" height="964" alt="image" src="https://github.com/user-attachments/assets/84c8e246-51dd-45f0-ad17-0afba23f1025" />
 
-📸 Insert screenshot showing child process
 
 Finding
 
-Spawned Process:
-
-notepad.exe
+Spawned Process: notepad.exe
 
 The use of notepad.exe is suspicious because it is a legitimate Windows binary commonly abused for process injection or stealth execution.
 
 
-###🚩 Process Arguments
+### 🚩 Process Arguments
 
 Telemetry shows the command line for the spawned process:
 
@@ -157,18 +149,12 @@ The compromise began with execution of a malicious file disguised as a PDF resum
 
 Daniel_Richardson_CV.pdf.exe
 
-The payload:
-
-Was launched interactively by the user via explorer.exe
-
-Spawned notepad.exe for further activity
-
-Established the first foothold in the environment
-
-This confirms phishing-based initial access and successful execution under the user context.
+The payload: Was launched interactively by the user via explorer.exe Spawned notepad.exe for further activity and established the first foothold in the environment. This confirms phishing-based initial access and successful execution under the user context.
 
 
-##🌐 SECTION 2: COMMAND & CONTROL [Moderate]
+## 🌐 SECTION 2: COMMAND & CONTROL 
+
+With a foothold established, the attacker needed to talk back to their infrastructure. Outbound connections were made to adversary-controlled domains. Identify how the attacker maintained communication and where their infrastructure lives.
 
 Objective
 
@@ -180,7 +166,11 @@ Identify the process responsible for the traffic
 
 Identify the payload staging domain
 
-###🚩 C2 Domain
+### 🚩 C2 Domain
+
+The payload established outbound connections.
+
+
 Investigation
 
 Once the initial payload executed, I pivoted to network telemetry to look for outbound connections initiated by the same execution chain on AS-PC1.
@@ -196,15 +186,15 @@ DeviceNetworkEvents
 <img width="2310" height="926" alt="image" src="https://github.com/user-attachments/assets/31c0b5ba-7008-4ab6-8d79-f18ef148e9f7" />
 
 
-📸 Insert screenshot here (show RemoteUrl clearly)
 
 Finding
 
-C2 Domain:
-
-cdn.cloud-endpoint.net
+C2 Domain: cdn.cloud-endpoint.net
 
 ###🚩 C2 Process
+
+Identify the process responsible for C2 traffic.
+
 Investigation
 
 To confirm which process was responsible for the outbound connections, I filtered for the process name associated with the suspicious connections.
@@ -212,14 +202,13 @@ To confirm which process was responsible for the outbound connections, I filtere
 Query Used (process-focused)
 
 DeviceNetworkEvents
-| where DeviceName contains "" "AS-PC1"
+| where DeviceName contains  "AS-PC1"
 | where RemoteUrl == "cdn.cloud-endpoint.net"
 | project Timestamp, DeviceName, InitiatingProcessFileName, InitiatingProcessCommandLine, RemoteUrl
 | order by Timestamp asc
 
 <img width="2082" height="882" alt="image" src="https://github.com/user-attachments/assets/b0817d48-9205-4b77-a285-1d2fb246a8ce" />
 
-📸 Insert screenshot here (show InitiatingProcessFileName)
 
 Finding
 
@@ -227,7 +216,11 @@ Process initiating outbound connections:
 
 Daniel_Richardson_CV.pdf.exe
 
-###🚩 Staging Infrastructure
+### 🚩 Staging Infrastructure
+
+Additional payloads were hosted externally.
+
+
 Investigation
 
 After identifying the primary C2 domain, I searched for additional related infrastructure used for payload staging or follow-on downloads. While investigating staging infrastructure, I searched for additional HTTPS-based download activity on AS-PC1 to identify whether the attacker hosted payloads separately from the primary C2 domain. 
@@ -241,7 +234,6 @@ DeviceProcessEvents
 
 <img width="2280" height="912" alt="image" src="https://github.com/user-attachments/assets/6f960b69-c5d7-45b2-b134-fd210eb528d0" />
 
-📸 Insert screenshot here (show full RemoteUrl)
 
 While reviewing HTTPS activity, I observed indicator of Remote command execution Targeting AS-PC2, Tool deployment via certutil, Lateral movement occurring. this confirms that the attackers succeded with lateral movement. 
 
@@ -265,68 +257,35 @@ Finding
 
 Payload staging domain: sync.cloud-endpoint.net
 
+
 Section 2 Conclusion
 
-Network and process telemetry confirms the attacker established external communications and retrieved additional payloads:
-
-C2 domain: cdn.cloud-endpoint.net
-
-Responsible process: Daniel_Richardson_CV.pdf.exe
-
-Staging infrastructure: sync.cloud-endpoint.net
+Network and process telemetry confirms the attacker established external communications and retrieved additional payloads: C2 domain: cdn.cloud-endpoint.net, the Responsible process is Daniel_Richardson_CV.pdf.exe and the Staging infrastructure: sync.cloud-endpoint.net
 
 The C2 domain demonstrates active command-and-control communications, while the staging domain was used to retrieve additional payload components via HTTPS download activity.
 
 This confirms that the attacker separated communication infrastructure from payload hosting — a common operational security technique.
 
 
-SECTION 3: CREDENTIAL ACCESS [Hard]
+## SECTION 3: CREDENTIAL ACCESS 
 
 Credentials are the keys to the kingdom. The attacker went after stored secrets on the compromised host - targeting local credential stores and using in-memory techniques to extract authentication material. Determine what was targeted, how it was stolen, and who was doing
 
+
 🧠 Investigation Strategy – Credential Access
 
-Now that C2 and staging were confirmed, the next logical question is:
+Now that C2 and staging were confirmed, the next logical question is: Did the attacker attempt to harvest credentials locally? 
 
-Did the attacker attempt to harvest credentials locally?
-
-Credential theft on Windows commonly targets:
-
-SAM hive
-
-SYSTEM hive
-
-LSASS memory
-
-Registry exports
-
-Local staging directories (often Public)
-
-So the pivot focus becomes:
-
-DeviceProcessEvents
-
-Registry-related commands
-
-reg save
-
-reg export
-
-Local file writes in suspicious locations
-
-###🚩 Registry Targets
+Credential theft on Windows commonly targets: SAM hive, SYSTEM hive, LSASS memory, Registry exports or Local staging directories (often Public).
 
 
-Format: Comma separated
+So the pivot focus becomes: DeviceProcessEvents, Registry-related commands, reg save, reg export, Local file writes in suspicious locations
+
+
+### 🚩 Registry Targets
+
 What two registry hives were targeted?
 
-Answer:
-
-SAM, SYSTEM
-
-🧠 How We Found It
-
-The attacker used native tools to access registry hives.
 
 Query used:
 
@@ -350,7 +309,10 @@ Targeted hives = SAM and SYSTEM
 
 This is classic offline credential dumping prep
 
-🚩 Local Staging
+
+### 🚩 Local Staging
+
+Extracted data was saved locally before exfiltration.
 
 Format: Full directory path
 Where were the credential files saved?
@@ -372,22 +334,28 @@ The logs showed registry exports being written there.
 
 To confirm:
 
-DeviceFileEvents
-| where FolderPath contains "C:\\Users\\Public"
-| where FileName in ("SAM","SYSTEM")
-| project Timestamp, DeviceName, FileName, FolderPath
+DeviceProcessEvents 
+| where DeviceName == "as-pc1" 
+| where FileName == "reg.exe" 
+| where ProcessCommandLine contains "save" 
+| project Timestamp, ProcessCommandLine, AccountName, FolderPath 
+| order by Timestamp asc
 
 This confirms staging prior to exfiltration.
 
 🚩 Execution Identity
 
+Credential extraction was performed under a specific user context.
+
+
 Format: Username
 What user performed this action?
 
-Answer:
+Answer: Sophie.Turner
 
-Sophie.Turner
 🧠 How We Confirmed It
+
+
 
 <img width="2276" height="964" alt="image" src="https://github.com/user-attachments/assets/9dac7a08-49a0-4990-9230-097f8d456099" />
 
@@ -407,37 +375,31 @@ It means the attacker was operating under that compromised account.
 
 ✅ Section 3 Conclusion
 
-Telemetry confirms the attacker performed offline credential harvesting by exporting:
+Telemetry confirms the attacker performed offline credential harvesting by exporting: HKLM\SAM HKLM\SYSTEM
 
-HKLM\SAM
+The hives were staged in: C:\Users\Public\
 
-HKLM\SYSTEM
-
-The hives were staged in:
-
-C:\Users\Public\
-
-All actions were executed under the compromised user account:
-
-Sophie.Turner
+All actions were executed under the compromised user account: Sophie.Turner
 
 This indicates preparation for credential cracking or lateral movement.
 
 
-##🛰️ SECTION 4: DISCOVERY
+## 🛰️ SECTION 4: DISCOVERY
 
 Before moving deeper, the attacker needed to understand the environment. They ran commands to figure out who they were, what was around them, and what they could reach. Identify the reconnaissance activity and what intelligence the attacker gathered.
 
 Objective
 
-After establishing command-and-control and staging additional payloads, the attacker began internal reconnaissance to understand:
-
-Who they were logged in as, What systems were reachable, What privileges were available. 
+After establishing command-and-control and staging additional payloads, the attacker began internal reconnaissance to understand: Who they were logged in as, What systems were reachable, What privileges were available. 
 
 
 The goal of this section is to identify: the command used to confirm user context, the command used for network enumeration, the local privileged group that was queried
 
 🚩 User Context
+
+The attacker confirmed their identity after initial access.
+
+
 Investigation
 
 After identifying successful execution and credential dumping activity, I pivoted back to DeviceProcessEvents on AS-PC1 to look for common reconnaissance commands.
@@ -453,22 +415,23 @@ DeviceProcessEvents
 | order by Timestamp asc
 
 <img width="2088" height="884" alt="image" src="https://github.com/user-attachments/assets/674ec6c2-a6b1-48f5-ab62-494663993b4e" />
-📸 Insert screenshot here (show ProcessCommandLine clearly)
 
 Finding
 
-Command used to confirm identity:
-
-whoami
+Command used to confirm identity: whoami
 
 This confirms the attacker verified the current execution context after gaining initial access.
 
-🚩 Network Enumeration
+### 🚩 Network Enumeration
+
+The attacker enumerated network resources.
+
+
 Investigation
 
 Next, I searched for commands used to enumerate network resources. A common technique is using net view to discover available systems and shares within the domain.
 
-Query Used (network share enumeration)
+Query Used 
 DeviceProcessEvents
 | where  DeviceName has_any ("as-pc1", "as-pc2")
 | where  ProcessCommandLine startswith "net"
@@ -476,28 +439,23 @@ DeviceProcessEvents
 
 <img width="1754" height="940" alt="image" src="https://github.com/user-attachments/assets/804cd342-30df-44ae-9c85-7ae3c0f60ceb" />
 
-📸 Insert screenshot here (show full net view command)
 
 Finding
 
-Command used to enumerate network resources:
-
-net view
+Command used to enumerate network resources: net view
 
 This confirms the attacker was identifying reachable systems or shared resources within the environment.
 
 🚩 Local Admins
+
+The attacker enumerated privileged local group membership.
+
+
 Investigation
 
-After network discovery, I looked for privilege enumeration activity.
+After network discovery, I looked for privilege enumeration activity. Attackers frequently check local administrator membership using: net localgroup administrators, net1 localgroup administrators
 
-Attackers frequently check local administrator membership using:
-
-net localgroup administrators
-
-net1 localgroup administrators
-
-Query Used (privileged group enumeration)
+Query Used 
 
 DeviceProcessEvents
 | where  DeviceName has_any ("as-pc1", "as-pc2")
@@ -507,19 +465,15 @@ DeviceProcessEvents
 
 <img width="2150" height="852" alt="image" src="https://github.com/user-attachments/assets/efbf7cbf-8d77-4912-b457-7270532c863c" />
 
-📸 Insert screenshot here (show full command line including group name)
 
 Finding
 
-Group queried:
+Group queried: administrators
 
-administrators
-
-Example observed command:
-
-net.exe localgroup administrators
+Example observed command: net.exe localgroup administrators
 
 This confirms the attacker was verifying local privilege levels before attempting lateral movement.
+
 
 SECTION 4 Conclusion
 
@@ -536,7 +490,11 @@ These actions demonstrate hands-on-keyboard attacker behavior focused on situati
 This aligns directly with common post-compromise reconnaissance tactics observed in real-world intrusions.
 
 
-##🧷 SECTION 5: PERSISTENCE – REMOTE TOOL [Hard]
+## 🧷 SECTION 5: PERSISTENCE – REMOTE TOOL [Hard]
+
+The attacker wasn't planning a short visit. Multiple mechanisms were deployed to ensure continued access - legitimate tools repurposed, tasks scheduled, accounts created. Map out every backdoor they left behind.
+
+
 Objective
 
 After discovery and credential access, the attacker deployed a legitimate remote administration tool to maintain long-term access.
@@ -555,7 +513,11 @@ Identify the unattended access password set
 
 Identify all hosts where the tool was deployed
 
-###🚩 Remote Tool
+### 🚩 Remote Tool
+
+A legitimate remote administration tool was deployed for ongoing access.
+
+
 Investigation
 
 After confirming hands-on-keyboard activity and discovery commands, I searched for evidence of remote access tooling being introduced. A common pattern is:
@@ -576,15 +538,17 @@ DeviceProcessEvents
 
 <img width="2232" height="900" alt="image" src="https://github.com/user-attachments/assets/073c693d-4d2e-473f-ad19-f4fa99db459a" />
 
-📸 Insert screenshot here (show AnyDesk execution)
 
 Finding
 
-Remote administration tool installed:
+Remote administration tool installed: anydesk
 
-anydesk
+the InitiatingProcessFileName confirmes that its the right tool
 
-🚩 Remote Tool Hash
+### 🚩 Remote Tool Hash
+
+Identify the SHA256 hash of the remote access tool.
+
 Investigation
 
 Once the remote tool executable was identified, I pivoted to file telemetry to retrieve the SHA256 hash associated with the AnyDesk binary.
@@ -598,15 +562,15 @@ DeviceFileEvents
 
 <img width="2238" height="846" alt="image" src="https://github.com/user-attachments/assets/3fc74bb2-acf7-489d-a786-65c578dca8ce" />
 
-📸 Insert screenshot here (show SHA256 clearly)
 
 Finding
 
-SHA256 hash of remote access tool:
+SHA256 hash of remote access tool: f42b635d93720d1624c74121b83794d706d4d064bee027650698025703d20532
 
-f42b635d93720d1624c74121b83794d706d4d064bee027650698025703d20532
+### 🚩 Download Method
 
-🚩 Download Method
+The tool was downloaded using a native Windows binary.
+
 Investigation
 
 Attackers often use “LOLBins” (living-off-the-land binaries) for downloading tools. To identify this, I searched for download-style command lines—especially certutil, bitsadmin, powershell iwr, curl, or wget.
@@ -621,15 +585,16 @@ DeviceProcessEvents
 <img width="2248" height="802" alt="image" src="https://github.com/user-attachments/assets/70be8c06-7aa4-4928-804e-1ac80a06f0ed" />
 
 
-📸 Insert screenshot here (show certutil download line)
 
 Finding
 
-Native Windows binary used:
+Native Windows binary used: certutil
 
-certutil
+###  🚩 Configuration Access
 
-### 🚩 Configuration Access
+After installation, a configuration file was accessed.
+
+
 Investigation
 
 After installation, remote tools often write or read configuration files. I looked for file access activity referencing AnyDesk configuration paths, especially within AppData roaming.
@@ -643,15 +608,15 @@ DeviceProcessEvents
 | order by Timestamp asc
 
 <img width="2248" height="790" alt="image" src="https://github.com/user-attachments/assets/9c5be24f-03b6-4a51-80fe-ffbdce6a7ce7" />
-📸 Insert screenshot here (show exact config file path)
 
 Finding
 
-Configuration file accessed:
+Configuration file accessed: C:\Users\Sophie.Turner\AppData\Roaming\AnyDesk\system.conf
 
-C:\Users\Sophie.Turner\AppData\Roaming\AnyDesk\system.conf
+### 🚩 Access Credentials
 
-###🚩 Access Credentials
+Unattended access was configured for the remote tool.
+
 Investigation
 
 To determine whether unattended access was configured, I searched for AnyDesk execution arguments that set a password or modified unattended settings. This is often visible in command-line telemetry.
@@ -665,15 +630,15 @@ DeviceProcessEvents
 
 <img width="2280" height="860" alt="image" src="https://github.com/user-attachments/assets/00e08a99-1fd5-48c0-91ff-c25d78ca5e73" />
 
-📸 Insert screenshot here (show the password string clearly if visible)
 
 Finding
 
-Unattended access password set:
-
-intrud3r!
+Unattended access password set: intrud3r!
 
 ### 🚩 Deployment Footprint
+
+ The remote tool was installed across the environment.
+
 Investigation
 
 After confirming AnyDesk persistence on AS-PC1, I expanded scope to determine if the same tool was deployed across additional hosts. I searched enterprise-wide for AnyDesk execution or file presence.
@@ -685,13 +650,10 @@ DeviceProcessEvents
 
 <img width="2190" height="684" alt="image" src="https://github.com/user-attachments/assets/d32e618b-5fe7-4b14-bccb-9c8555bb268b" />
 
-📸 Insert screenshot here (show all hosts returned)
 
 Finding
 
-Hosts where AnyDesk was deployed:
-
-as-pc1, as-pc2, as-srv
+Hosts where AnyDesk was deployed: as-pc1, as-pc2, as-srv
 
 ✅ Section 5 Conclusion
 
@@ -712,7 +674,10 @@ This persistence mechanism enabled continued attacker access even if the initial
 When you’re ready, we can move to SECTION 6: LATERAL MOVEMENT, and we’ll structure it the same way (flag-by-flag).
 
 
-🔁 SECTION 6: LATERAL MOVEMENT [Advanced]
+## 🔁 SECTION 6: LATERAL MOVEMENT 
+
+One host wasn't enough. The attacker moved through the environment, and not every method worked the first time. Track the path they took, the tools they tried, the accounts they used, and the order they moved.
+
 Objective
 
 After persistence was established, determine:
@@ -729,7 +694,10 @@ The account used
 
 How additional access was enabled
 
-🚩 Failed Execution
+### 🚩 Failed Execution
+
+The attacker attempted remote execution methods that failed.
+
 Investigation
 
 I searched for evidence of remote execution attempts using common administrative tools such as wmic and PsExec.
@@ -743,31 +711,34 @@ DeviceProcessEvents
 
 <img width="2254" height="876" alt="image" src="https://github.com/user-attachments/assets/89f608e4-515b-43ee-a095-6717787b9a4e" />
 
-📸 Insert screenshot here
 
 Finding
 
-Failed tools attempted:
+Failed tools attempted: wmic, PsExec
 
-wmic, PsExec
+### 🚩 Target Host
 
-🚩 Target Host
+Remote execution was attempted against a specific system.
+
 Investigation
 
 Reviewing the WMIC command line revealed the remote node being targeted.
+
 
 <img width="1916" height="818" alt="image" src="https://github.com/user-attachments/assets/59a38e3b-b231-4675-ba12-7a6ec7379780" />
 
 
 Finding
 
-Targeted hostname:
-
-as-pc2
+Targeted hostname: as-pc2
 
 (Observed in /node:AS-PC2 argument.)
 
-🚩 Successful Pivot
+### 🚩 Successful Pivot
+
+After failed attempts, a different method achieved lateral movement.
+
+
 Investigation
 
 After failed remote execution attempts, I searched for RDP usage indicating interactive lateral movement.
@@ -776,31 +747,44 @@ Query Used
 DeviceProcessEvents
 | where FileName =~ "mstsc.exe"
 | project Timestamp, DeviceName, AccountName, ProcessCommandLine
-| order by Timestamp asc
+| order by Timestamp as
 
 <img width="2202" height="816" alt="image" src="https://github.com/user-attachments/assets/3573b8df-54fc-4cc5-8be5-ee80591c4144" />
 
 
-📸 Insert screenshot here
 
 Finding
 
-Successful lateral movement method:
+Successful lateral movement method: mstsc.exe
 
-mstsc.exe
+### 🚩 Movement Path
 
-🚩 Movement Path
+The attacker moved through the environment in a specific sequence.
+
+
 Investigation
 
-By correlating process execution timestamps across hosts, I reconstructed the movement sequence.
+following the current stage of the investigation we know pretty much have the answer but to be sure we can actually is Anydesk and find out wich order. 
+
+
+DeviceProcessEvents
+| where FileName =~ "AnyDesk.exe"
+| summarize FirstSeen=min(Timestamp) by DeviceName
+| order by FirstSeen asc
+
+<img width="1418" height="628" alt="image" src="https://github.com/user-attachments/assets/1826e0c5-25ac-4ef7-8326-e76c3e46cf18" />
+
 
 Finding
 
-Lateral movement path:
+Lateral movement path: 1AS-PC1 > AS-PC2 > AS-SRV
 
-AS-PC1 > AS-PC2 > AS-SRV
 
-🚩 Compromised Account
+### 🚩 Compromised Account
+
+A valid account was used for successful lateral movement.
+
+
 Investigation
 
 Authentication events and process context showed a valid account being used for remote access.
@@ -810,9 +794,7 @@ Authentication events and process context showed a valid account being used for 
 
 Finding
 
-Authenticated user:
-
-david.Mitchell
+Authenticated user: david.Mitchell
 
 🚩 Account Activation
 Investigation
@@ -829,17 +811,12 @@ DeviceProcessEvents
 
 <img width="2246" height="886" alt="image" src="https://github.com/user-attachments/assets/5c95bd0f-5557-43c1-9fa2-3df311ba8fb4" />
 
-📸 Insert screenshot here
 
 Finding
 
-Parameter used:
+Parameter used: active:yes
 
-active:yes
-
-Activated by:
-
-david.Mitchell
+Activated by: david.Mitchell
 
 ✅ Section 6 Conclusion
 
@@ -853,7 +830,7 @@ Account activation using active:yes ensured continued privileged access during m
 
 
 
-🗂️ SECTION 7: PERSISTENCE – SCHEDULED TASK [Hard]
+## 🗂️ SECTION 7: PERSISTENCE – SCHEDULED TASK [Hard]
 
 The attacker planted additional persistence beyond the remote tool. Scheduled tasks and
 new accounts extend their access even if one mechanism is discovered and removed.
@@ -869,7 +846,11 @@ The file hash
 
 Whether a new backdoor account was created
 
-🚩 Scheduled Persistence
+### 🚩 Scheduled Persistence
+
+A scheduled task was created for persistence.
+
+
 Investigation
 
 I searched for scheduled task creation activity and task-related command execution.
@@ -883,32 +864,34 @@ DeviceProcessEvents
 
 <img width="2234" height="864" alt="image" src="https://github.com/user-attachments/assets/6c2df279-684a-422b-9984-0e1108a02095" />
 
-📸 Insert screenshot here
 
 Finding
 
-Scheduled task name:
-
-MicrosoftEdgeUpdateCheck
+Scheduled task name: MicrosoftEdgeUpdateCheck
 
 This indicates the attacker created a disguised persistence task mimicking legitimate Microsoft update activity.
 
-🚩 Renamed Binary
+### 🚩 Renamed Binary
+
+The persistence payload was renamed to avoid detection.
+
 Investigation
 
 I reviewed process executions around the scheduled task creation time to identify the payload being launched.
+
 
 <img width="2114" height="870" alt="image" src="https://github.com/user-attachments/assets/982a5b87-cdce-446c-b3cc-3f4cda5e62de" />
 
 Finding
 
-Renamed persistence binary:
-
-RuntimeBroker.exe
+Renamed persistence binary: RuntimeBroker.exe
 
 This filename impersonates a legitimate Windows process to evade suspicion.
 
-🚩 Persistence Hash
+### 🚩 Persistence Hash
+
+The persistence payload shares a hash with another file in the investigation.
+
 Investigation
 
 I pivoted to file telemetry to confirm the SHA256 hash of the renamed binary.
@@ -921,17 +904,14 @@ DeviceFileEvents
 
 <img width="2148" height="834" alt="image" src="https://github.com/user-attachments/assets/5c497b97-52ee-41b6-9ac2-778c409f8f25" />
 
-📸 Insert screenshot here
 
 Finding
 
-SHA256 hash:
-
-48b97fd91946e81e3e7742b3554585360551551cbf9398e1f34f4bc4eac3a6b5
+SHA256 hash: 48b97fd91946e81e3e7742b3554585360551551cbf9398e1f34f4bc4eac3a6b5
 
 This matches the original payload hash, confirming the same malicious binary was reused under a different name.
 
-🚩 Backdoor Account
+### 🚩 Backdoor Account
 Investigation
 
 I searched for local account creation activity using net.exe.
@@ -946,15 +926,13 @@ DeviceProcessEvents
 
 <img width="2142" height="780" alt="image" src="https://github.com/user-attachments/assets/eeaf786f-62e5-40c0-b8a9-43237347405e" />
 
-📸 Insert screenshot here
 
 Finding
 
-New local account created:
-
-svc_backup
+New local account created: svc_backup
 
 This account provides an additional persistence mechanism beyond scheduled tasks and remote tools.
+
 
 ✅ Section 7 Conclusion
 
@@ -970,7 +948,7 @@ Created new backdoor account: svc_backup
 
 This demonstrates deliberate persistence planning beyond simple remote access tools.
 
-📂 SECTION 8: DATA ACCESS [Hard]
+## 📂 SECTION 8: DATA ACCESS [Hard]
 
 The attacker found what they came for. Sensitive data was located, accessed, and staged for extraction. Identify what was taken, where it was accessed from, and how it was packaged.
 
@@ -989,7 +967,10 @@ Whether data was archived for potential exfiltration
 
 The hash of the staged archive
 
-🚩 Sensitive Document
+### 🚩 Sensitive Document
+
+A sensitive document was accessed on the file server.
+
 Investigation
 
 After lateral movement to AS-SRV, I searched for file access activity involving financial or business-sensitive documents.
@@ -1002,7 +983,6 @@ DeviceFileEvents
 
 <img width="2232" height="914" alt="image" src="https://github.com/user-attachments/assets/0a6800d7-e27b-4ba1-814f-3dc646b696c4" />
 
-📸 Insert screenshot here
 
 Finding
 
@@ -1012,7 +992,10 @@ BACS_Payments_Dec2025.ods
 
 This indicates the attacker targeted payroll-related financial data.
 
-🚩 Modification Evidence
+### 🚩 Modification Evidence
+
+The document was opened for editing, not just viewing.
+
 Investigation
 
 To determine whether the document was edited (not just viewed), I searched for file lock artifacts typically created when OpenDocument files are opened for modification.
@@ -1027,13 +1010,14 @@ DeviceFileEvents
 
 Finding
 
-Artifact proving modification:
-
-.~lock.BACS_Payments_Dec2025.ods#
+Artifact proving modification:.~lock.BACS_Payments_Dec2025.ods#
 
 This confirms the document was opened for editing.
 
-🚩 Access Origin
+### 🚩 Access Origin
+
+The document was accessed from a specific workstation.
+
 Investigation
 
 I correlated file access telemetry with the lateral movement timeline to determine which workstation accessed the document.remote IP is   10.1.0.154 which correspond to as-pc2
@@ -1043,13 +1027,14 @@ I correlated file access telemetry with the lateral movement timeline to determi
 
 Finding
 
-Host accessing the file:
-
-as-pc2
+Host accessing the file: as-pc2
 
 This aligns with the movement path identified in Section 6.
 
-🚩 Exfil Archive
+### 🚩 Exfil Archive
+
+Data was archived before potential exfiltration.
+
 Investigation
 
 Attackers commonly compress data prior to exfiltration. I searched for archive creation activity.
@@ -1065,7 +1050,6 @@ DeviceFileEvents
 
 <img width="2224" height="902" alt="image" src="https://github.com/user-attachments/assets/6e9454cf-6ed9-486f-b735-5a062534990e" />
 
-📸 Insert screenshot here
 
 Finding
 
@@ -1075,7 +1059,11 @@ Shares.7z
 
 This suggests data staging prior to potential exfiltration.
 
-🚩 Archive Hash
+### 🚩 Archive Hash
+
+Identify the SHA256 hash of the staged archive.
+
+
 Investigation
 
 
@@ -1090,9 +1078,7 @@ Investigation
 
 Finding
 
-SHA256 hash:
-
-6886c0a2e59792e69df94d2cf6ae62c2364fda50a23ab44317548895020ab048
+SHA256 hash: 6886c0a2e59792e69df94d2cf6ae62c2364fda50a23ab44317548895020ab048
 
 ✅ Section 8 Conclusion
 
@@ -1109,7 +1095,7 @@ Staged data likely for exfiltration
 This demonstrates objective-driven intrusion behavior focused on financial data acquisition.
 
 
-🧹 SECTION 9: ANTI-FORENSICS & MEMORY 
+## 🧹 SECTION 9: ANTI-FORENSICS & MEMORY 
 
 Before leaving, the attacker tried to cover their tracks. Logs were cleared, binaries renamed, and tools loaded in ways designed to avoid detection. Identify the anti-forensics techniques and what evidence survived.
 
@@ -1127,7 +1113,10 @@ Use in-memory tooling
 Inject into legitimate processes
 
 
-🚩 Log Clearing
+### 🚩 Log Clearing
+
+The attacker cleared logs to cover their tracks.
+
 Investigation
 
 Attackers often clear event logs to remove evidence of their activity. I searched for log-clearing behavior using wevtutil or relevant event indicators.
@@ -1141,7 +1130,6 @@ DeviceProcessEvents
 
 <img width="1796" height="896" alt="image" src="https://github.com/user-attachments/assets/a2765b1a-5769-4a92-aceb-b0a0181ed113" />
 
-📸 Insert screenshot here
 
 Finding
 
@@ -1151,7 +1139,10 @@ Security, System
 
 This indicates deliberate anti-forensic behavior to reduce traceability.
 
-🚩 Reflective Loading
+### 🚩 Reflective Loading
+
+Evidence of reflective code loading was captured.
+
 Investigation
 
 To detect fileless activity, I searched for .NET assemblies loaded directly into memory without backing files.
@@ -1167,17 +1158,17 @@ DeviceEvents
 
 <img width="2216" height="938" alt="image" src="https://github.com/user-attachments/assets/c495a535-70e4-4018-ab8f-3b36ef1bc206" />
 
-📸 Insert screenshot here
 
 Finding
 
-Recorded ActionType:
-
-ClrUnbackedModuleLoaded
+Recorded ActionType: ClrUnbackedModuleLoaded
 
 This confirms reflective loading — a common defense evasion technique.
 
-🚩 Memory Tool
+### 🚩 Memory Tool
+
+A credential theft tool was loaded directly into memory.
+
 Investigation
 
 I reviewed memory-loading telemetry to identify the credential theft tool.
@@ -1196,15 +1187,15 @@ DeviceEvents
 
 Finding
 
-Tool loaded in memory:
-
-SharpChrome
+Tool loaded in memory: SharpChrome
 
 SharpChrome is a credential extraction utility that targets browser-stored secrets.
 
-🚩 Host Process
-Investigation
+### 🚩 Host Process
 
+The credential theft tool was injected into a legitimate process.
+
+Investigation
 
 DeviceEvents
 | where DeviceName in ("as-pc1","as-pc2","as-srv")
@@ -1221,11 +1212,10 @@ To determine where the malicious assembly was injected, I reviewed the initiatin
 
 Finding
 
-Legitimate host process:
-
-notepad.exe
+Legitimate host process: notepad.exe
 
 This confirms process injection into a trusted Windows binary.
+
 
 ✅ Section 9 Conclusion
 
@@ -1241,7 +1231,8 @@ Injected the assembly into notepad.exe
 
 These actions demonstrate deliberate efforts to evade detection and hinder forensic analysis.
 
-🏁 Final Assessment
+
+## 🏁 Final Assessment
 
 The intrusion demonstrates:
 
