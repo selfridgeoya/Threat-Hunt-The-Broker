@@ -567,11 +567,14 @@ execution of a remote access binary
 creation of configuration or service-related activity
 
 Query Used (remote tool identification)
+
 DeviceProcessEvents
 | where DeviceName == "as-pc1"
 | where ProcessCommandLine has_any ("AnyDesk", "anydesk")
 | project Timestamp, DeviceName, AccountName, FileName, InitiatingProcessFileName, ProcessCommandLine
 | order by Timestamp asc
+
+<img width="2232" height="900" alt="image" src="https://github.com/user-attachments/assets/073c693d-4d2e-473f-ad19-f4fa99db459a" />
 
 📸 Insert screenshot here (show AnyDesk execution)
 
@@ -593,6 +596,8 @@ DeviceFileEvents
 | project Timestamp, DeviceName, FileName, FolderPath, SHA256, InitiatingProcessFileName
 | order by Timestamp asc
 
+<img width="2238" height="846" alt="image" src="https://github.com/user-attachments/assets/3fc74bb2-acf7-489d-a786-65c578dca8ce" />
+
 📸 Insert screenshot here (show SHA256 clearly)
 
 Finding
@@ -613,6 +618,9 @@ DeviceProcessEvents
 | project Timestamp, DeviceName, AccountName, FileName, ProcessCommandLine
 | order by Timestamp asc
 
+<img width="2248" height="802" alt="image" src="https://github.com/user-attachments/assets/70be8c06-7aa4-4928-804e-1ac80a06f0ed" />
+
+
 📸 Insert screenshot here (show certutil download line)
 
 Finding
@@ -627,12 +635,14 @@ Investigation
 After installation, remote tools often write or read configuration files. I looked for file access activity referencing AnyDesk configuration paths, especially within AppData roaming.
 
 Query Used (config file access)
-DeviceFileEvents
+
+DeviceProcessEvents
 | where DeviceName == "as-pc1"
-| where FolderPath has "AnyDesk"
-| project Timestamp, DeviceName, FileName, FolderPath, ActionType, InitiatingProcessFileName
+| where ProcessCommandLine has_any ("AnyDesk", "anydesk")
+| project Timestamp, DeviceName, AccountName, FileName, InitiatingProcessFileName, ProcessCommandLine
 | order by Timestamp asc
 
+<img width="2248" height="790" alt="image" src="https://github.com/user-attachments/assets/9c5be24f-03b6-4a51-80fe-ffbdce6a7ce7" />
 📸 Insert screenshot here (show exact config file path)
 
 Finding
@@ -653,6 +663,8 @@ DeviceProcessEvents
 | project Timestamp, DeviceName, AccountName, FileName, ProcessCommandLine
 | order by Timestamp asc
 
+<img width="2280" height="860" alt="image" src="https://github.com/user-attachments/assets/00e08a99-1fd5-48c0-91ff-c25d78ca5e73" />
+
 📸 Insert screenshot here (show the password string clearly if visible)
 
 Finding
@@ -668,8 +680,10 @@ After confirming AnyDesk persistence on AS-PC1, I expanded scope to determine if
 
 Query Used (multi-host deployment)
 DeviceProcessEvents
-| where FileName =~ "AnyDesk.exe" or ProcessCommandLine has "AnyDesk"
+| where FileName =~ "AnyDesk.exe" or ProcessCommandLine has "AnyDesk" and  ProcessCommandLine contains "daniel_richardson_cv.pdf.exe"
 | summarize by DeviceName
+
+<img width="2190" height="684" alt="image" src="https://github.com/user-attachments/assets/d32e618b-5fe7-4b14-bccb-9c8555bb268b" />
 
 📸 Insert screenshot here (show all hosts returned)
 
@@ -722,9 +736,12 @@ I searched for evidence of remote execution attempts using common administrative
 
 Query Used
 DeviceProcessEvents
-| where ProcessCommandLine has_any ("wmic", "psexec")
-| project Timestamp, DeviceName, AccountName, FileName, ProcessCommandLine
+| where DeviceName in ("as-pc1", "as-pc2", "as-srv") 
+| where ProcessCommandLine has_any ("wmic","psexec","schtasks","sc.exe","winrm","net use")
+| project Timestamp, DeviceName, ProcessCommandLine, AccountName
 | order by Timestamp asc
+
+<img width="2254" height="876" alt="image" src="https://github.com/user-attachments/assets/89f608e4-515b-43ee-a095-6717787b9a4e" />
 
 📸 Insert screenshot here
 
@@ -738,6 +755,9 @@ wmic, PsExec
 Investigation
 
 Reviewing the WMIC command line revealed the remote node being targeted.
+
+<img width="1916" height="818" alt="image" src="https://github.com/user-attachments/assets/59a38e3b-b231-4675-ba12-7a6ec7379780" />
+
 
 Finding
 
@@ -757,6 +777,9 @@ DeviceProcessEvents
 | where FileName =~ "mstsc.exe"
 | project Timestamp, DeviceName, AccountName, ProcessCommandLine
 | order by Timestamp asc
+
+<img width="2202" height="816" alt="image" src="https://github.com/user-attachments/assets/3573b8df-54fc-4cc5-8be5-ee80591c4144" />
+
 
 📸 Insert screenshot here
 
@@ -782,6 +805,9 @@ Investigation
 
 Authentication events and process context showed a valid account being used for remote access.
 
+<img width="2202" height="816" alt="image" src="https://github.com/user-attachments/assets/0c5d088f-5b97-43e9-afd7-6614bcea82d6" />
+
+
 Finding
 
 Authenticated user:
@@ -795,10 +821,13 @@ I searched for account modification activity involving net.exe.
 
 Query Used
 DeviceProcessEvents
+| where  DeviceName has_any ("as-pc1", "as-pc2", "as-srv")
 | where FileName =~ "net.exe"
 | where ProcessCommandLine has "active:"
 | project Timestamp, DeviceName, AccountName, ProcessCommandLine
 | order by Timestamp asc
+
+<img width="2246" height="886" alt="image" src="https://github.com/user-attachments/assets/5c95bd0f-5557-43c1-9fa2-3df311ba8fb4" />
 
 📸 Insert screenshot here
 
@@ -825,6 +854,9 @@ Account activation using active:yes ensured continued privileged access during m
 
 
 🗂️ SECTION 7: PERSISTENCE – SCHEDULED TASK [Hard]
+
+The attacker planted additional persistence beyond the remote tool. Scheduled tasks and
+new accounts extend their access even if one mechanism is discovered and removed.
 Objective
 
 Beyond AnyDesk persistence, determine:
@@ -844,9 +876,12 @@ I searched for scheduled task creation activity and task-related command executi
 
 Query Used
 DeviceProcessEvents
+| where  DeviceName has_any ("as-pc1", "as-pc2", "as-srv")
 | where FileName has_any ("schtasks.exe")
 | project Timestamp, DeviceName, AccountName, ProcessCommandLine
 | order by Timestamp asc
+
+<img width="2234" height="864" alt="image" src="https://github.com/user-attachments/assets/6c2df279-684a-422b-9984-0e1108a02095" />
 
 📸 Insert screenshot here
 
@@ -862,6 +897,8 @@ This indicates the attacker created a disguised persistence task mimicking legit
 Investigation
 
 I reviewed process executions around the scheduled task creation time to identify the payload being launched.
+
+<img width="2114" height="870" alt="image" src="https://github.com/user-attachments/assets/982a5b87-cdce-446c-b3cc-3f4cda5e62de" />
 
 Finding
 
@@ -882,6 +919,8 @@ DeviceFileEvents
 | project Timestamp, DeviceName, FileName, SHA256
 | order by Timestamp asc
 
+<img width="2148" height="834" alt="image" src="https://github.com/user-attachments/assets/5c497b97-52ee-41b6-9ac2-778c409f8f25" />
+
 📸 Insert screenshot here
 
 Finding
@@ -899,10 +938,13 @@ I searched for local account creation activity using net.exe.
 
 Query Used
 DeviceProcessEvents
+| where  DeviceName has_any ("as-pc1", "as-pc2", "as-srv")
 | where FileName =~ "net.exe"
 | where ProcessCommandLine contains "user"
 | project Timestamp, DeviceName, AccountName, ProcessCommandLine
 | order by Timestamp asc
+
+<img width="2142" height="780" alt="image" src="https://github.com/user-attachments/assets/eeaf786f-62e5-40c0-b8a9-43237347405e" />
 
 📸 Insert screenshot here
 
@@ -929,6 +971,10 @@ Created new backdoor account: svc_backup
 This demonstrates deliberate persistence planning beyond simple remote access tools.
 
 📂 SECTION 8: DATA ACCESS [Hard]
+
+The attacker found what they came for. Sensitive data was located, accessed, and staged for extraction. Identify what was taken, where it was accessed from, and how it was packaged.
+
+
 Objective
 
 Determine:
@@ -954,6 +1000,8 @@ DeviceFileEvents
 | project Timestamp, DeviceName, FileName, FolderPath, InitiatingProcessFileName
 | order by Timestamp asc
 
+<img width="2232" height="914" alt="image" src="https://github.com/user-attachments/assets/0a6800d7-e27b-4ba1-814f-3dc646b696c4" />
+
 📸 Insert screenshot here
 
 Finding
@@ -975,7 +1023,7 @@ DeviceFileEvents
 | project Timestamp, DeviceName, FileName, FolderPath
 | order by Timestamp asc
 
-📸 Insert screenshot here
+<img width="2038" height="712" alt="image" src="https://github.com/user-attachments/assets/43d8d5e7-c27e-4bc0-802e-614af4822959" />
 
 Finding
 
@@ -988,7 +1036,10 @@ This confirms the document was opened for editing.
 🚩 Access Origin
 Investigation
 
-I correlated file access telemetry with the lateral movement timeline to determine which workstation accessed the document.
+I correlated file access telemetry with the lateral movement timeline to determine which workstation accessed the document.remote IP is   10.1.0.154 which correspond to as-pc2
+
+<img width="1818" height="906" alt="image" src="https://github.com/user-attachments/assets/3b4898df-8b99-4648-a486-ef3fa900baee" />
+
 
 Finding
 
@@ -1005,9 +1056,14 @@ Attackers commonly compress data prior to exfiltration. I searched for archive c
 
 Query Used
 DeviceFileEvents
-| where FileName endswith ".7z"
-| project Timestamp, DeviceName, FileName, FolderPath, SHA256
+| where  DeviceName has_any ("as-pc1", "as-pc2", "as-srv")
+| where FileName endswith ".zip"
+    or FileName endswith ".rar"
+    or FileName endswith ".7z"
+| project Timestamp, DeviceName, FileName, FolderPath
 | order by Timestamp asc
+
+<img width="2224" height="902" alt="image" src="https://github.com/user-attachments/assets/6e9454cf-6ed9-486f-b735-5a062534990e" />
 
 📸 Insert screenshot here
 
@@ -1022,7 +1078,15 @@ This suggests data staging prior to potential exfiltration.
 🚩 Archive Hash
 Investigation
 
-I retrieved the SHA256 hash of the staged archive for integrity and tracking.
+
+  DeviceFileEvents
+| where  DeviceName has_any ("as-pc1", "as-pc2", "as-srv")
+| where FileName == "Shares.7z"
+| project Timestamp, DeviceName, FileName, FolderPath, SHA256
+| order by Timestamp asc
+
+<img width="1784" height="904" alt="image" src="https://github.com/user-attachments/assets/9b7350f4-2648-4b45-8e27-9bbce198bb8a" />
+
 
 Finding
 
@@ -1045,7 +1109,11 @@ Staged data likely for exfiltration
 This demonstrates objective-driven intrusion behavior focused on financial data acquisition.
 
 
-🧹 SECTION 9: ANTI-FORENSICS & MEMORY [Advanced]
+🧹 SECTION 9: ANTI-FORENSICS & MEMORY 
+
+Before leaving, the attacker tried to cover their tracks. Logs were cleared, binaries renamed, and tools loaded in ways designed to avoid detection. Identify the anti-forensics techniques and what evidence survived.
+
+
 Objective
 
 Determine whether the attacker attempted to:
@@ -1058,6 +1126,7 @@ Use in-memory tooling
 
 Inject into legitimate processes
 
+
 🚩 Log Clearing
 Investigation
 
@@ -1065,9 +1134,12 @@ Attackers often clear event logs to remove evidence of their activity. I searche
 
 Query Used
 DeviceProcessEvents
-| where FileName =~ "wevtutil.exe"
-| project Timestamp, DeviceName, AccountName, ProcessCommandLine
+| where  DeviceName has_any ("as-pc1", "as-pc2", "as-srv")
+| where ProcessCommandLine has_any ("wevtutil", "Clear-EventLog")
+| project Timestamp, DeviceName, ProcessCommandLine
 | order by Timestamp asc
+
+<img width="1796" height="896" alt="image" src="https://github.com/user-attachments/assets/a2765b1a-5769-4a92-aceb-b0a0181ed113" />
 
 📸 Insert screenshot here
 
@@ -1084,11 +1156,16 @@ Investigation
 
 To detect fileless activity, I searched for .NET assemblies loaded directly into memory without backing files.
 
-Query Used
 DeviceEvents
-| where ActionType == "ClrUnbackedModuleLoaded"
-| project Timestamp, DeviceName, InitiatingProcessFileName, ActionType
+| where DeviceName in ("as-pc1","as-pc2","as-srv")
+| where ActionType contains "Inject"
+   or ActionType contains "Load"
+   or ActionType contains "Reflect"
+| project Timestamp, DeviceName, ActionType, FileName, InitiatingProcessFileName
 | order by Timestamp asc
+
+
+<img width="2216" height="938" alt="image" src="https://github.com/user-attachments/assets/c495a535-70e4-4018-ab8f-3b36ef1bc206" />
 
 📸 Insert screenshot here
 
@@ -1105,6 +1182,18 @@ Investigation
 
 I reviewed memory-loading telemetry to identify the credential theft tool.
 
+DeviceEvents
+| where DeviceName in ("as-pc1","as-pc2","as-srv")
+| where ActionType == "ClrUnbackedModuleLoaded"
+| extend AF = todynamic(AdditionalFields)
+| extend ModuleILPathOrName = tostring(AF.ModuleILPathOrName)
+| summarize Hits=count(), FirstSeen=min(Timestamp), LastSeen=max(Timestamp)
+    by DeviceName, HostProcess=InitiatingProcessFileName, ModuleILPathOrName
+| order by Hits desc
+
+
+<img width="2302" height="930" alt="image" src="https://github.com/user-attachments/assets/4dec17dc-e354-4dc3-97bf-ab90e76d9e9c" />
+
 Finding
 
 Tool loaded in memory:
@@ -1116,7 +1205,19 @@ SharpChrome is a credential extraction utility that targets browser-stored secre
 🚩 Host Process
 Investigation
 
+
+DeviceEvents
+| where DeviceName in ("as-pc1","as-pc2","as-srv")
+| where ActionType == "ClrUnbackedModuleLoaded"
+| extend AF = todynamic(AdditionalFields)
+| extend ModuleILPathOrName = tostring(AF.ModuleILPathOrName)
+| summarize Hits=count(), FirstSeen=min(Timestamp), LastSeen=max(Timestamp)
+    by DeviceName, HostProcess=InitiatingProcessFileName, ModuleILPathOrName
+| order by Hits desc
+
 To determine where the malicious assembly was injected, I reviewed the initiating process associated with the reflective load event.
+
+<img width="2302" height="930" alt="image" src="https://github.com/user-attachments/assets/157b553c-7486-4a79-beee-9e0dd52a7bd3" />
 
 Finding
 
